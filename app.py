@@ -1,45 +1,88 @@
-from flask import Flask, jsonify, request
-import requests
-from flask_cors import CORS
-import http.client
-import json
+from flask import Flask, render_template, request, jsonify, send_file
+from werkzeug.utils import secure_filename
+import os
+from moviepy.editor import VideoFileClip, concatenate_videoclips, CompositeVideoClip, AudioFileClip, ImageClip, vfx
 
 app = Flask(__name__)
-CORS(app)
+app.config['UPLOAD_FOLDER'] = 'uploads/'
+app.config['ALLOWED_EXTENSIONS'] = {'mp4', 'avi', 'mov', 'jpg', 'jpeg', 'png', 'mp3', 'wav'}
 
-@app.route("/app/video", methods=["GET"])
-def get_video():
-    try:
-        # Get query parameters
-        query = request.args.get("query", "nature")  # Default search query is 'nature'
-        per_page = request.args.get("per_page", 1)  # Default per page is 1
+def allowedFile(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-        # Create connection to Pexels API via HTTPS
-        conn = http.client.HTTPSConnection("api.pexels.com")
-        # Construct the URL with query and per_page
-        url = f"/videos/search?query={query}&per_page={per_page}"
-        
-        # Set headers
-        headers = {
-            "Authorization": "N82L58IngLOXoFT5MF1UiQu2U61HsxFUAj5TGUAS2hSGdBXqGp5k9cVl"  # Replace with your Pexels API key
-        }
-        
-        # Make the request
-        conn.request("GET", url, headers=headers)
-        # Get the response
-        response = conn.getresponse()
-        
-        # If the request was successful, parse and return the data
-        if response.status == 200:
-            data = response.read().decode("utf-8")
-            return jsonify(json.loads(data))
-        else:
-            return jsonify({"error": "Failed to fetch data from Pexels API"}), response.status
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()  # Ensure the connection is closed
+@app.route('/')
+def index():
+    return "Welcome to the Video Editor"
 
-if __name__ == "__main__":
-    app.run(ssl_context=('d:/transition/pexels-video-app/backend/cert.pem', 'd:/transition/pexels-video-app/backend/key.pem'),
-             host='0.0.0.0', port=443, debug=True)
+@app.route('/editor')
+def editor():
+    return render_template('editor.html')
+
+@app.route('/edit', methods=['POST'])
+def editVideo():
+    data = request.json
+    timeline = data['timeline']
+    
+    def createVideoClip(item):
+        clip = VideoFileClip(os.path.join(app.config['UPLOAD_FOLDER'], item['filename']))
+        return clip.subclip(item['start'], item['end'])
+
+    def createImageClip(item):
+        clip = ImageClip(os.path.join(app.config['UPLOAD_FOLDER'], item['filename']))
+        return clip.set_duration(item['duration'])
+
+    def createAudioClip(item):
+        return AudioFileClip(os.path.join(app.config['UPLOAD_FOLDER'], item['filename']))
+
+    clip_creators = {
+        'video': createVideoClip,
+        'image': createImageClip,
+        'audio': createAudioClip
+    }
+
+    clips = []
+    for i, item in enumerate(timeline):
+        clip = clip_creators.get(item['type'])(item)
+        
+        if 'effects' in item:
+            for effect in item['effects']:
+                if effect['type'] == 'resize':
+                    clip = clip.resize(width=effect['width'])
+        
+        if i > 0 and 'transition' in item:
+            prev_clip = clips[-1]
+            transition_duration = item['transition']['duration']
+            if item['transition']['type'] == 'fade':
+                clip = clip.crossfadein(transition_duration)
+                prev_clip = prev_clip.crossfadeout(transition_duration)
+                clips[-1] = prev_clip
+            # Add more transition types as needed
+        
+        clips.append(clip)
+    
+    final_clip = concatenate_videoclips(clips)
+    
+    if 'audio' in data:
+        audio = AudioFileClip(os.path.join(app.config['UPLOAD_FOLDER'], data['audio']))
+        final_clip = final_clip.set_audio(audio)
+    
+    output_filename = 'output.mp4'
+    final_clip.write_videofile(os.path.join(app.config['UPLOAD_FOLDER'], output_filename))
+    
+    return jsonify({'success': True, 'output': output_filename})
+
+@app.route('/upload', methods=['POST'])
+def uploadFile():
+    if 'files' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    files = request.files.getlist('files')
+    filenames = []
+    for file in files:
+        if file and allowedFile(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            filenames.append(filename)
+    return jsonify(filenames)
+
+if __name__ == '__main__':
+    app.run(debug=True)
