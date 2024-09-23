@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Editor - Merge and Add Transitions</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='Style.css') }}">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="text-center my-4">
+            <h1>Video Editor - Merge and Add Transitions</h1>
+        </header>
+
+        <div class="uploadContainer text-center">
+            <input type="file" id="videoFiles" multiple accept="video/*" class="form-control mb-2">
+            <button id="uploadButton" class="btn btn-primary mt-2">Upload Videos</button>
+        </div>
+
+        <div class="videoContainer" id="videoResults">
+            <h2 class="text-center">Uploaded Videos</h2>
+            <div class="row" id="videoRow"></div>
+        </div>
+
+        <div class="timelineContainer">
+            <h2>Timeline</h2>
+            <div id="timeline" class="timeline"></div>
+        </div>
+
+        <div class="transitionOptions">
+            <h2>Transition Options</h2>
+            <select id="transitionType">
+                <option value="none">None</option>
+                <option value="fade">Fade</option>
+            </select>
+            <input type="number" id="transitionDuration" min="0.1" max="2" step="0.1" value="0.5" placeholder="Duration (s)">
+        </div>
+
+        <button id="mergeButton" class="btn btn-secondary mt-2">Merge Videos</button>
+
+        <div class="text-center" id="previewContainer" style="display: none">
+            <h2>Preview</h2>
+            <video id="previewVideo" controls></video>
+            <a id="downloadButton" class="btn btn-success mt-2" style="display: none">Download Merged Video</a>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            const videoRow = $('#videoRow');
+            const timeline = $('#timeline');
+            const previewVideo = $('#previewVideo')[0];
+            const downloadButton = $('#downloadButton');
+            const previewContainer = $('#previewContainer');
+            let uploadedFiles = [];
+
+            $('#videoFiles').on('change', function(event) {
+                videoRow.empty();
+                timeline.empty();
+                const files = event.target.files;
+
+                for (let i = 0; i < files.length; i++) {
+                    const videoElement = $('<video>').attr({
+                        src: URL.createObjectURL(files[i]),
+                        controls: true
+                    });
+                    videoRow.append(videoElement);
+
+                    const timelineItem = $('<div>')
+                        .addClass('timelineItem')
+                        .text(`Video ${i + 1}`)
+                        .data('filename', files[i].name);
+                    timeline.append(timelineItem);
+                }
+
+                timeline.sortable({
+                    update: function(event, ui) {
+                        console.log('Timeline order updated');
+                    }
+                });
+            });
+
+            $('#uploadButton').on('click', async function() {
+                const files = $('#videoFiles')[0].files;
+                if (files.length === 0) {
+                    alert("Please upload at least one video.");
+                    return;
+                }
+
+                const formData = new FormData();
+                for (let i = 0; i < files.length; i++) {
+                    formData.append("files", files[i]);
+                }
+
+                try {
+                    const response = await fetch("/upload", {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        uploadedFiles = await response.json();
+                        $('#mergeButton').show();
+                    } else {
+                        throw new Error('Failed to upload videos.');
+                    }
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+
+            $('#mergeButton').on('click', async function() {
+                const timelineItems = $('.timelineItem');
+                const transitionType = $('#transitionType').val();
+                const transitionDuration = parseFloat($('#transitionDuration').val());
+
+                const timeline = timelineItems.map((index, item) => {
+                    const filename = $(item).data('filename');
+                    return {
+                        type: 'video',
+                        filename: filename,
+                        start: 0,
+                        end: null,
+                        transition: index > 0 ? { type: transitionType, duration: transitionDuration } : null
+                    };
+                }).get();
+
+                try {
+                    const response = await fetch("/edit", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ timeline: timeline }),
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        const videoUrl = `/uploads/${result.output}`;
+                        previewVideo.src = videoUrl;
+                        previewVideo.load();
+                        previewVideo.play();
+                        downloadButton.attr({
+                            href: videoUrl,
+                            download: "merged_video.mp4"
+                        }).show();
+                        previewContainer.show();
+                    } else {
+                        throw new Error('Failed to merge videos.');
+                    }
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
