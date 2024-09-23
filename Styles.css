@@ -1,0 +1,70 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 20px 0;
+}
+
+.videoContainer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin: 20px;
+}
+
+.videoItem {
+    width: 30%;
+    margin: 10px;
+}
+
+video {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+
+.timelineContainer {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 20px;
+}
+
+.timeline {
+    display: flex;
+    min-height: 100px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    padding: 10px;
+}
+
+.timelineItem {
+    min-width: 100px;
+    height: 80px;
+    background-color: #007BFF;
+    margin-right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: move;
+}
+
+.transitionOptions {
+    margin-top: 20px;
+}
+
+input, select, button {
+    margin: 5px;
+    padding: 5px 10px;
+}
+
+button {
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
